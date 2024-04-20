@@ -11,8 +11,6 @@ import {PoolManager} from "v4-core/PoolManager.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
@@ -22,7 +20,6 @@ import {HookMiner} from "./utils/HookMiner.sol";
 
 contract TestPointsHook is Test, Deployers {
     using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
 
     MockERC20 token;
 
@@ -32,14 +29,20 @@ contract TestPointsHook is Test, Deployers {
     PointsHook hook;
 
     function setUp() public {
+        // Step 1 + 2
+        // Deploy PoolManager and Router contracts
         deployFreshManagerAndRouters();
 
+        // Deploy our TOKEN contract
         token = new MockERC20("Test Token", "TEST", 18);
         tokenCurrency = Currency.wrap(address(token));
 
+        // Mint a bunch of TOKEN to ourselves and to address(1)
         token.mint(address(this), 1000 ether);
         token.mint(address(1), 1000 ether);
 
+        // Mine an address that has flags set for
+        // the hook functions we want
         uint160 flags = uint160(
             Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG
         );
@@ -51,47 +54,49 @@ contract TestPointsHook is Test, Deployers {
             abi.encode(manager, "Points Token", "TEST_POINTS")
         );
 
+        // Deploy our hook
         hook = new PointsHook{salt: salt}(
             manager,
             "Points Token",
             "TEST_POINTS"
         );
 
-        token.approve(address(hook), type(uint256).max);
+        // Approve our TOKEN for spending on the swap router and modify liquidity router
+        // These variables are coming from the `Deployers` contract
         token.approve(address(swapRouter), type(uint256).max);
         token.approve(address(modifyLiquidityRouter), type(uint256).max);
 
+        // Initialize a pool
         (key, ) = initPool(
-            ethCurrency,
-            tokenCurrency,
-            hook,
-            3000,
-            SQRT_RATIO_1_1,
-            ZERO_BYTES
+            ethCurrency, // Currency 0 = ETH
+            tokenCurrency, // Currency 1 = TOKEN
+            hook, // Hook Contract
+            3000, // Swap Fees
+            SQRT_RATIO_1_1, // Initial Sqrt(P) value = 1
+            ZERO_BYTES // No additional `initData`
         );
     }
 
-    function test_addLiquidityAndSwap() public {
-        bytes memory hookData = hook.getHookData(address(0), address(this));
-
-        /*
+    /*
         currentTick = 0
         We are adding liquidity at tickLower = -60, tickUpper = 60
 
-        SqrtPrice(i = 0) = 1.0001 ^ (0/2) = 1
-        SqrtPrice(i = 60) = 1.0001 ^ (60 / 2) = 1.0001 ^ 30 = 1.000761
-        SqrtPrice(i = -60) = 1.0001 ^ (-60 / 2) = 1.0001 ^ -30 = 0.999239
-
-        1 as a Q64.96 number = 1 * 2^96 = 792281625142643375935439503
-        1.000761 as a Q64.96 number = 1.000761 * 2^96 = 79288455145937692754452637282
-        0.999239 as a Q64.96 number = 0.999239 * 2^96 = 79167869882590982432635263389
-
         New liquidity must not change the token price
+
+        We saw an equation in "Ticks and Q64.96 Numbers" of how to calculate amounts of
+        x and y when adding liquidity. Given the three variables - x, y, and L - we need to set value of one.
+
+        We'll set liquidityDelta = 1 ether, i.e. ΔL = 1 ether
+        since the `modifyLiquidity` function takes `liquidityDelta` as an argument instead of 
+        specific values for `x` and `y`.
+
+        Then, we can calculate Δx and Δy:
         Δx = Δ (L/SqrtPrice) = ( L * (SqrtPrice_tick - SqrtPrice_currentTick) ) / (SqrtPrice_tick * SqrtPrice_currentTick)
         Δy = Δ (L * SqrtPrice) = L * (SqrtPrice_currentTick - SqrtPrice_tick)
 
-        We have set liquidityDelta = +1 ether
-        We want ΔL = 1 ether
+        So, we can calculate how much x and y we need to provide
+        The python script below implements code to compute that for us
+        Python code taken from https://uniswapv3book.com
 
         ```py
         import math
@@ -138,17 +143,37 @@ contract TestPointsHook is Test, Deployers {
         NOTE: Python and Solidity handle precision a bit differently, so these are rough amounts. Slight loss of precision is to be expected.
 
         */
+
+    function test_addLiquidityAndSwap() public {
+        // Set no referrer in the hook data
+        bytes memory hookData = hook.getHookData(address(0), address(this));
+
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
+
+        // How we landed on 0.003 ether here is based on computing value of x and y given
+        // total value of delta L (liquidity delta) = 1 ether
+        // This is done by computing x and y from the equation shown in Ticks and Q64.96 Numbers lesson
+        // View the full code for this lesson on GitHub which has additional comments
+        // showing the exact computation and a Python script to do that calculation for you
         modifyLiquidityRouter.modifyLiquidity{value: 0.003 ether}(
             key,
-            IPoolManager.ModifyLiquidityParams(-60, 60, 1 ether),
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: 1 ether
+            }),
             hookData
         );
         uint256 pointsBalanceAfterAddLiquidity = hook.balanceOf(address(this));
+
+        // The exact amount of ETH we're adding (x)
+        // is roughly 0.299535... ETH
+        // Our original POINTS balance was 0
+        // so after adding liquidity we should have roughly 0.299535... POINTS tokens
         assertApproxEqAbs(
             pointsBalanceAfterAddLiquidity - pointsBalanceOriginal,
             2995354955910434,
-            0.00001 ether
+            0.0001 ether // error margin for precision loss
         );
 
         // Now we swap
@@ -159,7 +184,7 @@ contract TestPointsHook is Test, Deployers {
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
-                amountSpecified: -0.001 ether,
+                amountSpecified: -0.001 ether, // Exact input for output swap
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_RATIO + 1
             }),
             PoolSwapTest.TestSettings({
@@ -184,7 +209,11 @@ contract TestPointsHook is Test, Deployers {
 
         modifyLiquidityRouter.modifyLiquidity{value: 0.003 ether}(
             key,
-            IPoolManager.ModifyLiquidityParams(-60, 60, 1 ether),
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -60,
+                tickUpper: 60,
+                liquidityDelta: 1 ether
+            }),
             hookData
         );
 
