@@ -41,25 +41,10 @@ contract TestPointsHook is Test, Deployers {
         token.mint(address(this), 1000 ether);
         token.mint(address(1), 1000 ether);
 
-        // Mine an address that has flags set for
-        // the hook functions we want
-        uint160 flags = uint160(
-            Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG
-        );
-        (, bytes32 salt) = HookMiner.find(
-            address(this),
-            flags,
-            0,
-            type(PointsHook).creationCode,
-            abi.encode(manager, "Points Token", "TEST_POINTS")
-        );
+        address hookAddress = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG));
 
-        // Deploy our hook
-        hook = new PointsHook{salt: salt}(
-            manager,
-            "Points Token",
-            "TEST_POINTS"
-        );
+        deployCodeTo("PointsHook.sol", abi.encode(manager, "Points Token", "TEST_POINTS"), hookAddress);
+        hook = PointsHook(hookAddress);
 
         // Approve our TOKEN for spending on the swap router and modify liquidity router
         // These variables are coming from the `Deployers` contract
@@ -72,7 +57,7 @@ contract TestPointsHook is Test, Deployers {
             tokenCurrency, // Currency 1 = TOKEN
             hook, // Hook Contract
             3000, // Swap Fees
-            SQRT_RATIO_1_1, // Initial Sqrt(P) value = 1
+            SQRT_PRICE_1_1, // Initial Sqrt(P) value = 1
             ZERO_BYTES // No additional `initData`
         );
     }
@@ -160,7 +145,8 @@ contract TestPointsHook is Test, Deployers {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 1 ether
+                liquidityDelta: 1 ether, 
+                salt: 0
             }),
             hookData
         );
@@ -185,13 +171,9 @@ contract TestPointsHook is Test, Deployers {
             IPoolManager.SwapParams({
                 zeroForOne: true,
                 amountSpecified: -0.001 ether, // Exact input for output swap
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_RATIO + 1
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({
-                withdrawTokens: true,
-                settleUsingTransfer: true,
-                currencyAlreadySent: false
-            }),
+            PoolSwapTest.TestSettings({takeClaims: true, settleUsingBurn: false}),
             hookData
         );
         uint256 pointsBalanceAfterSwap = hook.balanceOf(address(this));
@@ -212,7 +194,8 @@ contract TestPointsHook is Test, Deployers {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 1 ether
+                liquidityDelta: 1 ether,
+                salt: 0
             }),
             hookData
         );
@@ -245,13 +228,9 @@ contract TestPointsHook is Test, Deployers {
             IPoolManager.SwapParams({
                 zeroForOne: true,
                 amountSpecified: -0.001 ether,
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_RATIO + 1
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({
-                withdrawTokens: true,
-                settleUsingTransfer: true,
-                currencyAlreadySent: false
-            }),
+            PoolSwapTest.TestSettings({takeClaims: true, settleUsingBurn: false}),
             hookData
         );
         uint256 pointsBalanceAfterSwap = hook.balanceOf(address(this));
