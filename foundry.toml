@@ -5,8 +5,9 @@ libs = ["lib"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
-solc_version = '0.8.25'
+solc_version = '0.8.26'
 evm_version = "cancun"
 optimizer_runs = 800
 via_ir = false
 ffi = true
+fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }]

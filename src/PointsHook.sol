@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.26;
 
-import {BaseHook} from "v4-periphery/BaseHook.sol";
+import {BaseHook} from "v4-periphery/src/base/hooks/BaseHook.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
@@ -43,7 +43,11 @@ contract PointsHook is BaseHook, ERC20 {
                 beforeSwap: false,
                 afterSwap: true,
                 beforeDonate: false,
-                afterDonate: false
+                afterDonate: false,
+                beforeSwapReturnDelta: false,
+                afterSwapReturnDelta: false,
+                afterAddLiquidityReturnDelta: false,
+                afterRemoveLiquidityReturnDelta: false
             });
     }
 
@@ -53,12 +57,12 @@ contract PointsHook is BaseHook, ERC20 {
         IPoolManager.SwapParams calldata swapParams,
         BalanceDelta delta,
         bytes calldata hookData
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override onlyByPoolManager returns (bytes4, int128) {
         // If this is not an ETH-TOKEN pool with this hook attached, ignore
-        if (!key.currency0.isNative()) return this.afterSwap.selector;
+        if (!key.currency0.isNative()) return (this.afterSwap.selector, 0);
 
         // We only mint points if user is buying TOKEN with ETH
-        if (!swapParams.zeroForOne) return this.afterSwap.selector;
+        if (!swapParams.zeroForOne) return (this.afterSwap.selector, 0);
 
         // Mint points equal to 20% of the amount of ETH they spent
         // Since its a zeroForOne swap:
@@ -77,7 +81,7 @@ contract PointsHook is BaseHook, ERC20 {
         // Mint the points including any referral points
         _assignPoints(hookData, pointsForSwap);
 
-        return this.afterSwap.selector;
+        return (this.afterSwap.selector, 0);
     }
 
     function afterAddLiquidity(
@@ -86,9 +90,9 @@ contract PointsHook is BaseHook, ERC20 {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta delta,
         bytes calldata hookData
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override onlyByPoolManager returns (bytes4, BalanceDelta) {
         // If this is not an ETH-TOKEN pool with this hook attached, ignore
-        if (!key.currency0.isNative()) return this.afterSwap.selector;
+        if (!key.currency0.isNative()) return (this.afterSwap.selector, delta);
 
         // Mint points equivalent to how much ETH they're adding in liquidity
         uint256 pointsForAddingLiquidity = uint256(int256(-delta.amount0()));
@@ -96,7 +100,7 @@ contract PointsHook is BaseHook, ERC20 {
         // Mint the points including any referral points
         _assignPoints(hookData, pointsForAddingLiquidity);
 
-        return this.afterAddLiquidity.selector;
+        return (this.afterAddLiquidity.selector, delta);
     }
 
     function _assignPoints(
