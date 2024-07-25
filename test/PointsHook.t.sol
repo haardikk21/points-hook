@@ -185,6 +185,10 @@ contract TestPointsHook is Test, Deployers {
                 takeClaims: false,
                 settleUsingBurn: false
             }),
+            PoolSwapTest.TestSettings({
+                takeClaims: true,
+                settleUsingBurn: false
+            }),
             hookData
         );
         uint256 pointsBalanceAfterSwap = hook.balanceOf(address(this));
@@ -243,6 +247,10 @@ contract TestPointsHook is Test, Deployers {
             }),
             PoolSwapTest.TestSettings({
                 takeClaims: false,
+                settleUsingBurn: false
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: true,
                 settleUsingBurn: false
             }),
             hookData
