@@ -15,7 +15,9 @@ import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {SqrtPriceMath} from "v4-core/libraries/SqrtPriceMath.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 
+import "forge-std/console.sol";
 import {PointsHook} from "../src/PointsHook.sol";
 
 contract TestPointsHook is Test, Deployers {
@@ -153,18 +155,15 @@ contract TestPointsHook is Test, Deployers {
         uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
 
-        int256 amount0Delta = SqrtPriceMath.getAmount0Delta(
-            SQRT_PRICE_1_1,
-            sqrtPriceAtTickUpper,
-            1 ether
-        );
-        int256 amount1Delta = SqrtPriceMath.getAmount1Delta(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            1 ether
-        );
+        (uint256 amount0Delta, uint256 amount1Delta) = LiquidityAmounts
+            .getAmountsForLiquidity(
+                SQRT_PRICE_1_1,
+                sqrtPriceAtTickLower,
+                sqrtPriceAtTickUpper,
+                1 ether
+            );
 
-        modifyLiquidityRouter.modifyLiquidity{value: uint256(-amount0Delta)}(
+        modifyLiquidityRouter.modifyLiquidity{value: amount0Delta + 1}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
@@ -216,21 +215,25 @@ contract TestPointsHook is Test, Deployers {
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
         uint256 referrerPointsBalanceOriginal = hook.balanceOf(address(1));
 
+        // amount0Delta = ~0.003 ETH
+        // How we landed on 0.003 ether here is based on computing value of x and y given
+        // total value of delta L (liquidity delta) = 1 ether
+        // This is done by computing x and y from the equation shown in Ticks and Q64.96 Numbers lesson
+        // View the full code for this lesson on GitHub which has additional comments
+        // showing the exact computation and a Python script to do that calculation for you
+
         uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
 
-        int256 amount0Delta = SqrtPriceMath.getAmount0Delta(
-            SQRT_PRICE_1_1,
-            sqrtPriceAtTickUpper,
-            1 ether
-        );
-        int256 amount1Delta = SqrtPriceMath.getAmount1Delta(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            1 ether
-        );
+        (uint256 amount0Delta, uint256 amount1Delta) = LiquidityAmounts
+            .getAmountsForLiquidity(
+                SQRT_PRICE_1_1,
+                sqrtPriceAtTickLower,
+                sqrtPriceAtTickUpper,
+                1 ether
+            );
 
-        modifyLiquidityRouter.modifyLiquidity{value: uint256(-amount0Delta)}(
+        modifyLiquidityRouter.modifyLiquidity{value: amount0Delta + 1}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
