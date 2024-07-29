@@ -14,6 +14,7 @@ import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {SqrtPriceMath} from "v4-core/libraries/SqrtPriceMath.sol";
 
 import {PointsHook} from "../src/PointsHook.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
@@ -143,12 +144,28 @@ contract TestPointsHook is Test, Deployers {
 
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
 
+        // amount0Delta = ~0.003 ETH
         // How we landed on 0.003 ether here is based on computing value of x and y given
         // total value of delta L (liquidity delta) = 1 ether
         // This is done by computing x and y from the equation shown in Ticks and Q64.96 Numbers lesson
         // View the full code for this lesson on GitHub which has additional comments
         // showing the exact computation and a Python script to do that calculation for you
-        modifyLiquidityRouter.modifyLiquidity{value: 0.003 ether}(
+
+        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
+        uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
+
+        int256 amount0Delta = SqrtPriceMath.getAmount0Delta(
+            SQRT_PRICE_1_1,
+            sqrtPriceAtTickUpper,
+            1 ether
+        );
+        int256 amount1Delta = SqrtPriceMath.getAmount1Delta(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            1 ether
+        );
+
+        modifyLiquidityRouter.modifyLiquidity{value: uint256(-amount0Delta)}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
@@ -185,10 +202,6 @@ contract TestPointsHook is Test, Deployers {
                 takeClaims: false,
                 settleUsingBurn: false
             }),
-            PoolSwapTest.TestSettings({
-                takeClaims: true,
-                settleUsingBurn: false
-            }),
             hookData
         );
         uint256 pointsBalanceAfterSwap = hook.balanceOf(address(this));
@@ -204,7 +217,21 @@ contract TestPointsHook is Test, Deployers {
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
         uint256 referrerPointsBalanceOriginal = hook.balanceOf(address(1));
 
-        modifyLiquidityRouter.modifyLiquidity{value: 0.003 ether}(
+        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
+        uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
+
+        int256 amount0Delta = SqrtPriceMath.getAmount0Delta(
+            SQRT_PRICE_1_1,
+            sqrtPriceAtTickUpper,
+            1 ether
+        );
+        int256 amount1Delta = SqrtPriceMath.getAmount1Delta(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            1 ether
+        );
+
+        modifyLiquidityRouter.modifyLiquidity{value: uint256(-amount0Delta)}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
@@ -247,10 +274,6 @@ contract TestPointsHook is Test, Deployers {
             }),
             PoolSwapTest.TestSettings({
                 takeClaims: false,
-                settleUsingBurn: false
-            }),
-            PoolSwapTest.TestSettings({
-                takeClaims: true,
                 settleUsingBurn: false
             }),
             hookData
