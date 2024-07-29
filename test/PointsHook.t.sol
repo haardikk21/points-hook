@@ -17,7 +17,6 @@ import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {SqrtPriceMath} from "v4-core/libraries/SqrtPriceMath.sol";
 
 import {PointsHook} from "../src/PointsHook.sol";
-import {HookMiner} from "./utils/HookMiner.sol";
 
 contract TestPointsHook is Test, Deployers {
     using CurrencyLibrary for Currency;
