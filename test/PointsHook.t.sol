@@ -71,117 +71,43 @@ contract TestPointsHook is Test, Deployers {
         );
     }
 
-    /*
-        currentTick = 0
-        We are adding liquidity at tickLower = -60, tickUpper = 60
-
-        New liquidity must not change the token price
-
-        We saw an equation in "Ticks and Q64.96 Numbers" of how to calculate amounts of
-        x and y when adding liquidity. Given the three variables - x, y, and L - we need to set value of one.
-
-        We'll set liquidityDelta = 1 ether, i.e. ΔL = 1 ether
-        since the `modifyLiquidity` function takes `liquidityDelta` as an argument instead of 
-        specific values for `x` and `y`.
-
-        Then, we can calculate Δx and Δy:
-        Δx = Δ (L/SqrtPrice) = ( L * (SqrtPrice_tick - SqrtPrice_currentTick) ) / (SqrtPrice_tick * SqrtPrice_currentTick)
-        Δy = Δ (L * SqrtPrice) = L * (SqrtPrice_currentTick - SqrtPrice_tick)
-
-        So, we can calculate how much x and y we need to provide
-        The python script below implements code to compute that for us
-        Python code taken from https://uniswapv3book.com
-
-        ```py
-        import math
-
-        q96 = 2**96
-
-        def tick_to_price(t):
-            return 1.0001**t
-
-        def price_to_sqrtp(p):
-            return int(math.sqrt(p) * q96)
-
-        sqrtp_low = price_to_sqrtp(tick_to_price(-60))
-        sqrtp_cur = price_to_sqrtp(tick_to_price(0))
-        sqrtp_upp = price_to_sqrtp(tick_to_price(60))
-
-        def calc_amount0(liq_delta, pa, pb):
-            if pa > pb:
-                pa, pb = pb, pa
-            return int(liq_delta * q96 * (pb - pa) / pa / pb)
-
-        def calc_amount1(liq_delta, pa, pb):
-            if pa > pb:
-                pa, pb = pb, pa
-            return int(liq_delta * (pb - pa) / q96)
-
-        one_ether = 10 ** 18
-        liq = 1 * one_ether
-        eth_amount = calc_amount0(liq, sqrtp_upp, sqrtp_cur)
-        token_amount = calc_amount1(liq, sqrtp_low, sqrtp_cur)
-
-        print(dict({
-        'eth_amount': eth_amount,
-        'eth_amount_readable': eth_amount / 10**18,
-        'token_amount': token_amount,
-        'token_amount_readable': token_amount / 10**18,
-        }))
-        ```
-
-        {'eth_amount': 2995354955910434, 'eth_amount_readable': 0.002995354955910434, 'token_amount': 2995354955910412, 'token_amount_readable': 0.002995354955910412}
-
-        Therefore, Δx = 0.002995354955910434 ETH and Δy = 0.002995354955910434 Tokens
-
-        NOTE: Python and Solidity handle precision a bit differently, so these are rough amounts. Slight loss of precision is to be expected.
-
-        */
-
     function test_addLiquidityAndSwap() public {
-        // Set no referrer in the hook data
-        bytes memory hookData = hook.getHookData(address(0), address(this));
-
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
 
-        // amount0Delta = ~0.003 ETH
-        // How we landed on 0.003 ether here is based on computing value of x and y given
-        // total value of delta L (liquidity delta) = 1 ether
-        // This is done by computing x and y from the equation shown in Ticks and Q64.96 Numbers lesson
-        // View the full code for this lesson on GitHub which has additional comments
-        // showing the exact computation and a Python script to do that calculation for you
+        // Set no referrer in the hook data
+        bytes memory hookData = hook.getHookData(address(0), address(this));
 
         uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
 
-        (uint256 amount0Delta, uint256 amount1Delta) = LiquidityAmounts
-            .getAmountsForLiquidity(
-                SQRT_PRICE_1_1,
-                sqrtPriceAtTickLower,
-                sqrtPriceAtTickUpper,
-                1 ether
-            );
+        uint256 ethToAdd = 0.1 ether;
+        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            ethToAdd
+        );
+        uint256 tokenToAdd = LiquidityAmounts.getAmount1ForLiquidity(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            liquidityDelta
+        );
 
-        modifyLiquidityRouter.modifyLiquidity{value: amount0Delta + 1}(
+        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 1 ether,
+                liquidityDelta: int256(uint256(liquidityDelta)),
                 salt: bytes32(0)
             }),
             hookData
         );
         uint256 pointsBalanceAfterAddLiquidity = hook.balanceOf(address(this));
 
-        // The exact amount of ETH we're adding (x)
-        // is roughly 0.299535... ETH
-        // Our original POINTS balance was 0
-        // so after adding liquidity we should have roughly 0.299535... POINTS tokens
         assertApproxEqAbs(
             pointsBalanceAfterAddLiquidity - pointsBalanceOriginal,
-            2995354955910434,
-            0.0001 ether // error margin for precision loss
+            0.1 ether,
+            0.001 ether // error margin for precision loss
         );
 
         // Now we swap
@@ -214,30 +140,27 @@ contract TestPointsHook is Test, Deployers {
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
         uint256 referrerPointsBalanceOriginal = hook.balanceOf(address(1));
 
-        // amount0Delta = ~0.003 ETH
-        // How we landed on 0.003 ether here is based on computing value of x and y given
-        // total value of delta L (liquidity delta) = 1 ether
-        // This is done by computing x and y from the equation shown in Ticks and Q64.96 Numbers lesson
-        // View the full code for this lesson on GitHub which has additional comments
-        // showing the exact computation and a Python script to do that calculation for you
-
         uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
 
-        (uint256 amount0Delta, uint256 amount1Delta) = LiquidityAmounts
-            .getAmountsForLiquidity(
-                SQRT_PRICE_1_1,
-                sqrtPriceAtTickLower,
-                sqrtPriceAtTickUpper,
-                1 ether
-            );
+        uint256 ethToAdd = 0.1 ether;
+        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            ethToAdd
+        );
+        uint256 tokenToAdd = LiquidityAmounts.getAmount1ForLiquidity(
+            sqrtPriceAtTickLower,
+            SQRT_PRICE_1_1,
+            liquidityDelta
+        );
 
-        modifyLiquidityRouter.modifyLiquidity{value: amount0Delta + 1}(
+        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd + 1}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
-                liquidityDelta: 1 ether,
+                liquidityDelta: int256(uint256(liquidityDelta)),
                 salt: bytes32(0)
             }),
             hookData
@@ -250,15 +173,15 @@ contract TestPointsHook is Test, Deployers {
 
         assertApproxEqAbs(
             pointsBalanceAfterAddLiquidity - pointsBalanceOriginal,
-            2995354955910434,
-            0.00001 ether
+            0.1 ether,
+            0.001 ether
         );
         assertApproxEqAbs(
             referrerPointsBalanceAfterAddLiquidity -
                 referrerPointsBalanceOriginal -
                 hook.POINTS_FOR_REFERRAL(),
-            299535495591043,
-            0.000001 ether
+            0.01 ether,
+            0.0001 ether
         );
 
         // Now we swap
