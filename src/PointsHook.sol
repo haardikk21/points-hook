@@ -69,9 +69,7 @@ contract PointsHook is BaseHook, ERC20 {
         //      this is an "exact output for input" swap
         //      amount of ETH they spent is equal to BalanceDelta.amount0()
 
-        uint256 ethSpendAmount = swapParams.amountSpecified < 0
-            ? uint256(-swapParams.amountSpecified)
-            : uint256(int256(-delta.amount0()));
+        uint256 ethSpendAmount = uint256(int256(-delta.amount0()));
         uint256 pointsForSwap = ethSpendAmount / 5;
 
         // Mint the points including any referral points
@@ -102,12 +100,17 @@ contract PointsHook is BaseHook, ERC20 {
     }
 
     function _assignPoints(bytes calldata hookData, uint256 points) internal {
+        // If no hookData is passed in, no points will be assigned to anyone
         if (hookData.length == 0) return;
 
+        // Extract user address from hookData
         address user = abi.decode(hookData, (address));
 
+        // If there is hookData but not in the format we're expecting and user address is zero
+        // nobody gets any points
         if (user == address(0)) return;
 
+        // Mint points to the user
         _mint(user, points);
     }
 }
