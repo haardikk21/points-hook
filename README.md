@@ -8,7 +8,6 @@ we set up a pool for ETH/TOKEN
 
 1. We're gonna issue points for every time somebody buys TOKEN with ETH
 2. We're gonna issue points everytime somebody adds liquidity to the pool
-3. Referral mechanic where Alice can refer Bob and then Alice gets 10% of points from Bob everytime Bob does (1) or (2)
 
 This is not production ready by ANY means. At the end of the workshop, we'll discuss some obvious flaws and how we can make it better.
 
