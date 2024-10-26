@@ -16,10 +16,6 @@ contract PointsHook is BaseHook, ERC20 {
     using CurrencyLibrary for Currency;
     using BalanceDeltaLibrary for BalanceDelta;
 
-    mapping(address => address) public referredBy;
-
-    uint256 public constant POINTS_FOR_REFERRAL = 500 * 10 ** 18;
-
     constructor(
         IPoolManager _manager,
         string memory _name,
@@ -93,7 +89,8 @@ contract PointsHook is BaseHook, ERC20 {
         bytes calldata hookData
     ) external override onlyPoolManager returns (bytes4, BalanceDelta) {
         // If this is not an ETH-TOKEN pool with this hook attached, ignore
-        if (!key.currency0.isAddressZero()) return (this.afterSwap.selector, delta);
+        if (!key.currency0.isAddressZero())
+            return (this.afterSwap.selector, delta);
 
         // Mint points equivalent to how much ETH they're adding in liquidity
         uint256 pointsForAddingLiquidity = uint256(int256(-delta.amount0()));
@@ -104,35 +101,13 @@ contract PointsHook is BaseHook, ERC20 {
         return (this.afterAddLiquidity.selector, delta);
     }
 
-    function _assignPoints(
-        bytes calldata hookData,
-        uint256 referreePoints
-    ) internal {
+    function _assignPoints(bytes calldata hookData, uint256 points) internal {
         if (hookData.length == 0) return;
 
-        (address referrer, address referree) = abi.decode(
-            hookData,
-            (address, address)
-        );
-        if (referree == address(0)) return;
+        address user = abi.decode(hookData, (address));
 
-        if (referredBy[referree] == address(0) && referrer != address(0)) {
-            referredBy[referree] = referrer;
-            _mint(referrer, POINTS_FOR_REFERRAL);
-        }
+        if (user == address(0)) return;
 
-        // Mint 10% of the referree's points to the referrer
-        if (referredBy[referree] != address(0)) {
-            _mint(referrer, referreePoints / 10);
-        }
-
-        _mint(referree, referreePoints);
-    }
-
-    function getHookData(
-        address referrer,
-        address referree
-    ) public pure returns (bytes memory) {
-        return abi.encode(referrer, referree);
+        _mint(user, points);
     }
 }

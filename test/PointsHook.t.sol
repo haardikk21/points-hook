@@ -74,8 +74,8 @@ contract TestPointsHook is Test, Deployers {
     function test_addLiquidityAndSwap() public {
         uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
 
-        // Set no referrer in the hook data
-        bytes memory hookData = hook.getHookData(address(0), address(this));
+        // Set user address in hook data
+        bytes memory hookData = abi.encode(address(this));
 
         uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
@@ -131,88 +131,6 @@ contract TestPointsHook is Test, Deployers {
         assertEq(
             pointsBalanceAfterSwap - pointsBalanceAfterAddLiquidity,
             2 * 10 ** 14
-        );
-    }
-
-    function test_addLiquidityAndSwapWithReferral() public {
-        bytes memory hookData = hook.getHookData(address(1), address(this));
-
-        uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
-        uint256 referrerPointsBalanceOriginal = hook.balanceOf(address(1));
-
-        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
-        uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
-
-        uint256 ethToAdd = 0.1 ether;
-        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            ethToAdd
-        );
-        uint256 tokenToAdd = LiquidityAmounts.getAmount1ForLiquidity(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            liquidityDelta
-        );
-
-        modifyLiquidityRouter.modifyLiquidity{value: ethToAdd + 1}(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: -60,
-                tickUpper: 60,
-                liquidityDelta: int256(uint256(liquidityDelta)),
-                salt: bytes32(0)
-            }),
-            hookData
-        );
-
-        uint256 pointsBalanceAfterAddLiquidity = hook.balanceOf(address(this));
-        uint256 referrerPointsBalanceAfterAddLiquidity = hook.balanceOf(
-            address(1)
-        );
-
-        assertApproxEqAbs(
-            pointsBalanceAfterAddLiquidity - pointsBalanceOriginal,
-            0.1 ether,
-            0.001 ether
-        );
-        assertApproxEqAbs(
-            referrerPointsBalanceAfterAddLiquidity -
-                referrerPointsBalanceOriginal -
-                hook.POINTS_FOR_REFERRAL(),
-            0.01 ether,
-            0.0001 ether
-        );
-
-        // Now we swap
-        // We will swap 0.001 ether for tokens
-        // We should get 20% of 0.001 * 10**18 points
-        // = 2 * 10**14
-        // Referrer should get 10% of that - so 2 * 10**13
-        swapRouter.swap{value: 0.001 ether}(
-            key,
-            IPoolManager.SwapParams({
-                zeroForOne: true,
-                amountSpecified: -0.001 ether,
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-            }),
-            PoolSwapTest.TestSettings({
-                takeClaims: false,
-                settleUsingBurn: false
-            }),
-            hookData
-        );
-        uint256 pointsBalanceAfterSwap = hook.balanceOf(address(this));
-        uint256 referrerPointsBalanceAfterSwap = hook.balanceOf(address(1));
-
-        assertEq(
-            pointsBalanceAfterSwap - pointsBalanceAfterAddLiquidity,
-            2 * 10 ** 14
-        );
-        assertEq(
-            referrerPointsBalanceAfterSwap -
-                referrerPointsBalanceAfterAddLiquidity,
-            2 * 10 ** 13
         );
     }
 }
