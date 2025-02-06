@@ -133,3 +133,9 @@ zeroForOne
     => the amount we're specifying is in terms of money entering the user's wallet
     => exact OUTPUT swap
 - exact output (we dont know this until afterSwap)
+
+## Improvements
+
+- currently we have a single ERC-20 token (POINTS) that our hook mints. But one hook can be attached to multiple different pools, meaning anyone can create a pool and attach our hook to it, and farm infinite POINTS. This is not desirable and you likely want to maintain separate POINTS-style tokens for different pools. To do this, you can either use `ERC-6909` style tokens, or have an independent ERC-20 token contract per-pool that you deploy/initialize during pool initialization
+
+- POINTs can also be farmed right now by someone just adding and removing liquidity over and over again. A more sophisticated implementation could issue points during the removal of liquidity, instead of addition, based on how long liquidity was kept inside the pool. So if someone tries to remove liquidity immediately after adding it, they would get basically no points

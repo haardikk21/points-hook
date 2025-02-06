@@ -4,18 +4,15 @@ pragma solidity 0.8.26;
 import {BaseHook} from "v4-periphery/src/base/hooks/BaseHook.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
-import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {BalanceDeltaLibrary, BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 
 contract PointsHook is BaseHook, ERC20 {
-    using CurrencyLibrary for Currency;
-    using BalanceDeltaLibrary for BalanceDelta;
-
     constructor(
         IPoolManager _manager,
         string memory _name,
@@ -72,7 +69,7 @@ contract PointsHook is BaseHook, ERC20 {
         uint256 ethSpendAmount = uint256(int256(-delta.amount0()));
         uint256 pointsForSwap = ethSpendAmount / 5;
 
-        // Mint the points including any referral points
+        // Mint the points
         _assignPoints(hookData, pointsForSwap);
 
         return (this.afterSwap.selector, 0);

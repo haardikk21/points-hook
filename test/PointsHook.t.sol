@@ -87,7 +87,7 @@ contract TestPointsHook is Test, Deployers {
             ethToAdd
         );
         uint256 tokenToAdd = LiquidityAmounts.getAmount1ForLiquidity(
-            sqrtPriceAtTickLower,
+            sqrtPriceAtTickUpper,
             SQRT_PRICE_1_1,
             liquidityDelta
         );
