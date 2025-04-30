@@ -8,6 +8,7 @@ import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {PoolManager} from "v4-core/PoolManager.sol";
+import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
@@ -94,7 +95,7 @@ contract TestPointsHook is Test, Deployers {
 
         modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
             key,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: -60,
                 tickUpper: 60,
                 liquidityDelta: int256(uint256(liquidityDelta)),
@@ -116,7 +117,7 @@ contract TestPointsHook is Test, Deployers {
         // = 2 * 10**14
         swapRouter.swap{value: 0.001 ether}(
             key,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true,
                 amountSpecified: -0.001 ether, // Exact input for output swap
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
