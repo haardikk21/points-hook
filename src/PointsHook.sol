@@ -2,10 +2,11 @@
 pragma solidity 0.8.26;
 
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC1155} from "solmate/src/tokens/ERC1155.sol";
 
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
@@ -13,12 +14,8 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 
-contract PointsHook is BaseHook, ERC20 {
-    constructor(
-        IPoolManager _manager,
-        string memory _name,
-        string memory _symbol
-    ) BaseHook(_manager) ERC20(_name, _symbol, 18) {}
+contract PointsHook is BaseHook, ERC1155 {
+    constructor(IPoolManager _manager) BaseHook(_manager) {}
 
     function getHookPermissions()
         public
@@ -32,7 +29,7 @@ contract PointsHook is BaseHook, ERC20 {
                 afterInitialize: false,
                 beforeAddLiquidity: false,
                 beforeRemoveLiquidity: false,
-                afterAddLiquidity: true,
+                afterAddLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: false,
                 afterSwap: true,
@@ -43,6 +40,10 @@ contract PointsHook is BaseHook, ERC20 {
                 afterAddLiquidityReturnDelta: false,
                 afterRemoveLiquidityReturnDelta: false
             });
+    }
+
+    function uri(uint256) public view virtual override returns (string memory) {
+        return "https://api.example.com/token/{id}";
     }
 
     function _afterSwap(
@@ -71,33 +72,16 @@ contract PointsHook is BaseHook, ERC20 {
         uint256 pointsForSwap = ethSpendAmount / 5;
 
         // Mint the points
-        _assignPoints(hookData, pointsForSwap);
+        _assignPoints(key.toId(), hookData, pointsForSwap);
 
         return (this.afterSwap.selector, 0);
     }
 
-    function _afterAddLiquidity(
-        address,
-        PoolKey calldata key,
-        ModifyLiquidityParams calldata,
-        BalanceDelta delta,
-        BalanceDelta,
-        bytes calldata hookData
-    ) internal override returns (bytes4, BalanceDelta) {
-        // If this is not an ETH-TOKEN pool with this hook attached, ignore
-        if (!key.currency0.isAddressZero())
-            return (this.afterSwap.selector, delta);
-
-        // Mint points equivalent to how much ETH they're adding in liquidity
-        uint256 pointsForAddingLiquidity = uint256(int256(-delta.amount0()));
-
-        // Mint the points including any referral points
-        _assignPoints(hookData, pointsForAddingLiquidity);
-
-        return (this.afterAddLiquidity.selector, delta);
-    }
-
-    function _assignPoints(bytes calldata hookData, uint256 points) internal {
+    function _assignPoints(
+        PoolId poolId,
+        bytes calldata hookData,
+        uint256 points
+    ) internal {
         // If no hookData is passed in, no points will be assigned to anyone
         if (hookData.length == 0) return;
 
@@ -109,6 +93,7 @@ contract PointsHook is BaseHook, ERC20 {
         if (user == address(0)) return;
 
         // Mint points to the user
-        _mint(user, points);
+        uint256 poolIdUint = uint256(PoolId.unwrap(poolId));
+        _mint(user, poolIdUint, points, "");
     }
 }

@@ -7,7 +7,6 @@ Assume we launch some memecoin - TOKEN
 we set up a pool for ETH/TOKEN
 
 1. We're gonna issue points for every time somebody buys TOKEN with ETH
-2. We're gonna issue points everytime somebody adds liquidity to the pool
 
 This is not production ready by ANY means. At the end of the workshop, we'll discuss some obvious flaws and how we can make it better.
 
@@ -17,11 +16,9 @@ This is not production ready by ANY means. At the end of the workshop, we'll dis
 
 e.g. if somebody sells 1 ETH to buy "TOKEN", they will get 0.2 `POINTS`
 
-- For add liquidity, we'll keep it 1:1 for ETH added
-
 ### How are these points represented?
 
-- Separate ERC-20 token, call it `POINTS`, minting `POINTS` to people who do those above things
+- Separate ERC-1155 token, call it `POINTS`, minting `POINTS` to people who do those above things per Pool
 
 ## Mechanism Design
 
@@ -33,10 +30,6 @@ HOW Much ETH is being spent in the swap
 => we only know this for sure AFTER the swap has happened
 
 - afterSwap
-
-(2) - issue points everytime somebody adds liquidity
-
-- afterAddLiquidity
 
 ## BalanceDelta
 
@@ -133,9 +126,3 @@ zeroForOne
     => the amount we're specifying is in terms of money entering the user's wallet
     => exact OUTPUT swap
 - exact output (we dont know this until afterSwap)
-
-## Improvements
-
-- currently we have a single ERC-20 token (POINTS) that our hook mints. But one hook can be attached to multiple different pools, meaning anyone can create a pool and attach our hook to it, and farm infinite POINTS. This is not desirable and you likely want to maintain separate POINTS-style tokens for different pools. To do this, you can either use `ERC-6909` style tokens, or have an independent ERC-20 token contract per-pool that you deploy/initialize during pool initialization
-
-- POINTs can also be farmed right now by someone just adding and removing liquidity over and over again. A more sophisticated implementation could issue points during the removal of liquidity, instead of addition, based on how long liquidity was kept inside the pool. So if someone tries to remove liquidity immediately after adding it, they would get basically no points

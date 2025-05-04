@@ -12,18 +12,19 @@ import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
 
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {SqrtPriceMath} from "v4-core/libraries/SqrtPriceMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 
+import {ERC1155TokenReceiver} from "solmate/src/tokens/ERC1155.sol";
+
 import "forge-std/console.sol";
 import {PointsHook} from "../src/PointsHook.sol";
 
-contract TestPointsHook is Test, Deployers {
-    using CurrencyLibrary for Currency;
-
+contract TestPointsHook is Test, Deployers, ERC1155TokenReceiver {
     MockERC20 token;
 
     Currency ethCurrency = Currency.wrap(address(0));
@@ -45,14 +46,8 @@ contract TestPointsHook is Test, Deployers {
         token.mint(address(1), 1000 ether);
 
         // Deploy hook to an address that has the proper flags set
-        uint160 flags = uint160(
-            Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG
-        );
-        deployCodeTo(
-            "PointsHook.sol",
-            abi.encode(manager, "Points Token", "TEST_POINTS"),
-            address(flags)
-        );
+        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG);
+        deployCodeTo("PointsHook.sol", abi.encode(manager), address(flags));
 
         // Deploy our hook
         hook = PointsHook(address(flags));
@@ -70,14 +65,8 @@ contract TestPointsHook is Test, Deployers {
             3000, // Swap Fees
             SQRT_PRICE_1_1 // Initial Sqrt(P) value = 1
         );
-    }
 
-    function test_addLiquidityAndSwap() public {
-        uint256 pointsBalanceOriginal = hook.balanceOf(address(this));
-
-        // Set user address in hook data
-        bytes memory hookData = abi.encode(address(this));
-
+        // Add some liquidity to the pool
         uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
 
@@ -101,15 +90,19 @@ contract TestPointsHook is Test, Deployers {
                 liquidityDelta: int256(uint256(liquidityDelta)),
                 salt: bytes32(0)
             }),
-            hookData
+            ZERO_BYTES
         );
-        uint256 pointsBalanceAfterAddLiquidity = hook.balanceOf(address(this));
+    }
 
-        assertApproxEqAbs(
-            pointsBalanceAfterAddLiquidity - pointsBalanceOriginal,
-            0.1 ether,
-            0.001 ether // error margin for precision loss
+    function test_swap() public {
+        uint256 poolIdUint = uint256(PoolId.unwrap(key.toId()));
+        uint256 pointsBalanceOriginal = hook.balanceOf(
+            address(this),
+            poolIdUint
         );
+
+        // Set user address in hook data
+        bytes memory hookData = abi.encode(address(this));
 
         // Now we swap
         // We will swap 0.001 ether for tokens
@@ -128,10 +121,10 @@ contract TestPointsHook is Test, Deployers {
             }),
             hookData
         );
-        uint256 pointsBalanceAfterSwap = hook.balanceOf(address(this));
-        assertEq(
-            pointsBalanceAfterSwap - pointsBalanceAfterAddLiquidity,
-            2 * 10 ** 14
+        uint256 pointsBalanceAfterSwap = hook.balanceOf(
+            address(this),
+            poolIdUint
         );
+        assertEq(pointsBalanceAfterSwap - pointsBalanceOriginal, 2 * 10 ** 14);
     }
 }
