@@ -1,128 +1,160 @@
-# First Hook
+# Building your first hook
 
-A really simple onchain "points program"
+A really simple "points hook"
 
-Assume we launch some memecoin - TOKEN
+Assume you have some ETH/TOKEN pool that exists. We wanna make a hook that can be attached
+to such kinds of pools where:
 
-we set up a pool for ETH/TOKEN
+every time somebody swaps ETH for TOKEN (i.e. spends ETH, purchases TOKEN) - we issue them some "points"
 
-1. We're gonna issue points for every time somebody buys TOKEN with ETH
+> This is not production ready by any means. It is a PoC.
 
-This is not production ready by ANY means. At the end of the workshop, we'll discuss some obvious flaws and how we can make it better.
+### Design
 
-### How many points to give out?
+1. how many points do we give out per swap?
 
-- For every swap, we will give out (20% of the value in ETH) as points
+we're going to give 20% of the ETH spent in the swap in the form of points
 
-e.g. if somebody sells 1 ETH to buy "TOKEN", they will get 0.2 `POINTS`
+e.g. if someone sells 1 ETH to purchase TOKEN, they get 20% of 1 = 0.2 POINTS
 
-### How are these points represented?
+2. how do we represent these points?
 
-- Separate ERC-1155 token, call it `POINTS`, minting `POINTS` to people who do those above things per Pool
+points themselves are going to be an ERC-1155 token.
 
-## Mechanism Design
+ERC-1155 allows minting "x" number of tokens that are distinct based on some sort of "key"
 
-(1) - issue points everytime somebody swaps to buy `TOKEN` for `ETH`
+since one hook can be attached to multipple pools, ETH/A, ETH/B, ETH/C -
 
-we will issue points proportional to amount of ETH being spent in the swap
+points = minting some amount of ERC-1155 tokens for that pool to the user
 
-HOW Much ETH is being spent in the swap
-=> we only know this for sure AFTER the swap has happened
+> Q: why not use ERC-6909 for doing this?
+> A: you totally can! erc-1155 is just a bit more familiar to people so for the first workshop i wanted to stick with this
 
-- afterSwap
+---
 
-## BalanceDelta
+### beforeSwap vs afterSwap
 
-Alice is doing a swap on some pool
+this balancedelta thing is actually quite important for us
+
+we're giving out points as a % of the amount of ETH that was spent in the swap
+
+how much ETH was spent in the swap?
+
+this is not a question that can be answered in `beforeSwap` because it is literally unknown until the swap happens
+
+1. potentially, slippage limits could hit causing only a partial swap to happen
+   e.g. Alice could've said sell 1 ETH for TOKEN, but slippage limit is hit, and only 0.5 ETH was actually swapped
+
+2. there are broadly two types of swaps that uniswap can do. these are referred to as exact-input and exact-output swaps.
+
+e.g. ETH/USDC pool. Alice wants to swap ETH for USDC.
+
+exact input variant = Sell 1 ETH for USDC
+e.g. she is "exactly" specifying how much ETH to sell, but not specifying how much USDC to get back
+
+exact output variant = Sell UP TO 1 ETH for exactly 1500 USDC
+e.g. she is "exactly" specifying how much USDC she wants back, and only a upper limit on how much ETH she's willing to spend
+
+---
+
+the "BalanceDelta" thing we have in `afterSwap` becomes very crucial to our use case
+because `BalanceDelta` => the exact amount of tokens that need to be transferred (how much ETH was spent, how much TOKEN to withdraw)
+
+Tl;DR: we gotta use `afterSwap` because we do not know how much ETH Alice spent before the swap happens
+
+### minting points
+
+who do we actually mint points to
+
+does Uniswap (or our hook) have any idea who tf Alice is?
+do we have Alice's address?
+
+Alice -> Router -> PoolManager
+-> msg.sender = Router
+-> Hook.afterSwap(sender)
+sender = Router address
+msg.sender = Pool Manager
+
+ok we cannot use `sender` or `msg.sender`
+
+maybe we can use `tx.origin`. is that true?
+
+if Alice is using an account abstracted wallet (SC wallet)
+
+`tx.origin` = address of the relayer
+
+GENERAL PURPOSE: `tx.origin` doesnt work either
+
+---
+
+how tf do we figure out who to mint points to
+
+we're gonna ask the user to give us an address to mint points to (optionally)
+
+if they dont specify an address/invalid address = dont mint any points
+
+#### hookData
+
+hookData allows users to pass in arbitrary information meant for use by the hook contract
+
+Alice -> Router.swap(...., hookData) -> PoolManager.swap(...., hookData) -> HookContract.before..(..., hookData)
+
+the hook contract can figure out what it wants to do with that hookData
+
+in our case, we're gonna use this as a way to ask the user for an address
+
+to illustrate the concept a bit better, a couple examples of better ways to use hookData
+
+e.g. KYC hook for example
+verify a ZK Proof that somebody is actually a verified human (World App ZK Proof)
+hook only lets you swap/become an LP if youre a human
+
+ZK Proof => hookData
+
+#### BalanceDelta
+
+effectively, for all intents and purposes, you can think of BalanceDelta as a struct with two values
 
 ```
-
-function swap() {
-
-    beforeSwap()
-
-    // how much tokens does Alice get back?
-        // BalanceDelta
-    // are we possibly hitting her slippage limit?
-    // how much fees is being charged for this swap?
-    coreSwapLogic();
-
-    afterSwap();
+struct BalanceDelta {
+    int128 amount0;
+    int128 amount1;
 }
-
 ```
 
-How many different "configurations" of swaps are possible in Uniswap?
+for a given operation (e.g. a swap) the related `BalanceDelta` contains amounts of token0 and token1 that need to be moved around
 
-"Direction of the swap" `zeroForOne`
-In the case of ETH/TOKEN pool:
+`amount0` => amount of token0
+`amount1` => amount of token1
 
-- sell ETH and buy TOKEN (zeroForOne)
-- sell TOKEn and buy ETH (oneForZero)
+NOTE: these amounts are `int`s and NOT `uint`s
+i.e. these can be negative numbers
 
-"exact input vs. exact output" swaps
+in fact, in case of a swap, one of them will always be a negative number
 
-Sell ETH for TOKEN
+there's a convention that's followed in uniswap
 
-exact input swap
+where everytime we talk about "money changing hands", we represent money coming in to uniswap and money going out of uniswap based on the sign of the numeric value
 
-- "Sell 1 ETH for TOKEN"
-  - amount of token 0 to be swapped is specified upfront
-  - amount of token 1 to get back is unknown until after the swap
+this "direction" of a token transfer is represented from the perspective of the caller to uniswap
 
-exact output swap
++ve number => money is coming in to user's wallet (i.e. money is leaving Uniswap)
+-ve number => money is leaving user's wallet (i.e. money is entering Uniswap)
 
-- "Sell ??? ETH for 1000 TOKEN"
-  - amount of token 0 to be swapped is unknown
-  - amount of token 1 to get back is specified upfront
+in the case of a Swap where youre exchanging one token for another
 
----
+imagine ETH/USDC pool, selling ETH for USDC, ETH is token0, USDC is token1
 
-4 total possibilities:
+```
+BalanceDelta {
+    amount0 = some negative number (amount of ETH being swapped),
+    amount1 = some positive number (amount of USDC being swapped)
+}
+```
 
-- exact input zero for one
-- exact input one for zero
+in the case of Adding Liquidity to a pool,
 
-- exact output zero for one
-- exact output one for zero
+(under the asumption you are adding both tokens as liquidity)
 
----
-
-BalanceDelta have a negative value??
-
-"Technical Introduction"
-
-whenever there is a balance change involved, all numbers in uniswap by convention are represented
-from the perspective of the "User"
-
-`amount0Delta` = -1 ether
-=> User needs to send 1 ETH to Uniswap (user owes 1 ETH)
-
-`amount1Delta` = 500 token
-=> User is owed 500 tokens by Uniswap (Uniswap needs to send 500 tokens to the user)
-
----
-
-BalanceDelta = (amount0Delta, amount1Delta)
-
-Alice sells 1 ETH for TOKEN in our pool
-after the swap is done
-
-`BalanceDelta` = (-1 ETH, +500 TOKEN)
-
-these two values individually represent changes in balances of token0 and token1 respectively
-
----
-
-zeroForOne
-
-- exact input (...)
-  - we're exactly specifying how much input tokens to spend
-  - `amountSpecified`
-  - `amountSpecified < 0`
-    => negative number = money leaving user's wallet
-    => exact input swap
-  - `amountSpecified > 0`
-    => the amount we're specifying is in terms of money entering the user's wallet
-    => exact OUTPUT swap
-- exact output (we dont know this until afterSwap)
+amount0 = -ve
+amount1 = -ve
