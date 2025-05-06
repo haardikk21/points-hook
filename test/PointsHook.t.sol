@@ -72,12 +72,12 @@ contract TestPointsHook is Test, Deployers, ERC1155TokenReceiver {
 
         uint256 ethToAdd = 0.1 ether;
         uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-            sqrtPriceAtTickLower,
             SQRT_PRICE_1_1,
+            sqrtPriceAtTickUpper,
             ethToAdd
         );
         uint256 tokenToAdd = LiquidityAmounts.getAmount1ForLiquidity(
-            sqrtPriceAtTickUpper,
+            sqrtPriceAtTickLower,
             SQRT_PRICE_1_1,
             liquidityDelta
         );
